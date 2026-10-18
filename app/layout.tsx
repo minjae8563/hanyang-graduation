@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { EnsureSession } from "@/components/ensure-session";
 
 export const metadata: Metadata = {
-  title: "마음로그 · 오늘의 마음을 기록해요",
+  title: "마음로그 · 기록으로 살피는 마음 돌봄",
   description:
     "하루의 마음을 편하게 적어두면, 마음의 흐름을 함께 살펴보고 돌봐주는 공간이에요.",
 };
@@ -28,7 +27,6 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-dvh font-sans">
-        <EnsureSession />
         {children}
       </body>
     </html>
