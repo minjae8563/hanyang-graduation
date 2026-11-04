@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { SUPABASE_READY } from "@/lib/supabase/env";
 import { toWellbeingScore } from "@/lib/score";
-import { HeartPulse } from "lucide-react";
+import { ChevronRight, HeartPulse } from "lucide-react";
 
 type Prediction = { predicted_total: number; created_at: string };
 
@@ -37,10 +38,19 @@ export function ScoreCard({ refreshKey = 0 }: { refreshKey?: number }) {
   if (loading) return null;
 
   return (
-    <section className="fade-in mb-6 rounded-3xl bg-white/70 p-5 shadow-soft ring-1 ring-clay/40">
-      <div className="flex items-center gap-2 text-sm text-mist">
-        <HeartPulse className="h-4 w-4 text-sage-500" />
-        나의 마음 점수
+    <Link
+      href="/app/score"
+      className="fade-in mb-6 block rounded-3xl bg-white/70 p-5 shadow-soft ring-1 ring-clay/40 transition hover:ring-sage-300"
+    >
+      <div className="flex items-center justify-between text-sm text-mist">
+        <span className="flex items-center gap-2">
+          <HeartPulse className="h-4 w-4 text-sage-500" />
+          나의 마음 점수
+        </span>
+        <span className="flex items-center text-xs">
+          변화 보기
+          <ChevronRight className="h-4 w-4" />
+        </span>
       </div>
 
       {pred ? (
@@ -77,6 +87,6 @@ export function ScoreCard({ refreshKey = 0 }: { refreshKey?: number }) {
           알려드릴게요.
         </p>
       )}
-    </section>
+    </Link>
   );
 }

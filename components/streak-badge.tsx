@@ -1,30 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { SUPABASE_READY } from "@/lib/supabase/env";
-import { computeStreak, type Streak } from "@/lib/streak";
+import { computeStreak, toDaySet, type Streak } from "@/lib/streak";
+import { StreakCalendar } from "@/components/streak-calendar";
 import { Flame } from "lucide-react";
 
-/** 메인 화면 헤더의 🔥 연속 기록일. refreshKey가 바뀌면 다시 계산한다. */
+/** 메인 화면 헤더의 🔥 연속 기록일. 누르면 기록 달력이 열린다. */
 export function StreakBadge({ refreshKey = 0 }: { refreshKey?: number }) {
   const supabase = useMemo(() => (SUPABASE_READY ? createClient() : null), []);
   const [streak, setStreak] = useState<Streak | null>(null);
+  const [days, setDays] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     if (!supabase) return;
     (async () => {
-      // 최근 400일치 작성 시각만 가져와 계산 (본문은 불필요)
-      const since = new Date();
-      since.setDate(since.getDate() - 400);
+      // 작성 시각만 가져온다 (본문 불필요). 달력의 과거 달까지 보여주기 위해 기간 제한 없음.
       const { data } = await supabase
         .from("entries")
         .select("created_at")
-        .gte("created_at", since.toISOString())
         .order("created_at", { ascending: false })
-        .limit(2000);
+        .limit(5000);
       if (!data) return;
-      setStreak(computeStreak(data.map((r) => r.created_at as string)));
+      const ts = data.map((r) => r.created_at as string);
+      setStreak(computeStreak(ts));
+      setDays(toDaySet(ts));
     })();
   }, [supabase, refreshKey]);
 
@@ -32,28 +35,34 @@ export function StreakBadge({ refreshKey = 0 }: { refreshKey?: number }) {
   const active = streak.days > 0;
 
   return (
-    <div
-      className={`fade-in flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ring-1 ${
-        active
-          ? "bg-orange-50 text-orange-600 ring-orange-200"
-          : "bg-white/60 text-mist ring-clay/40"
-      }`}
-      title={
-        active && !streak.wroteToday
-          ? "오늘 기록하면 연속 기록이 이어져요"
-          : undefined
-      }
-    >
-      <Flame
-        className={`h-4 w-4 ${
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={`fade-in flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition hover:shadow-soft ${
           active
-            ? streak.wroteToday
-              ? "fill-orange-500 text-orange-500"
-              : "text-orange-400"
-            : "text-mist/60"
+            ? "bg-orange-50 text-orange-600 ring-orange-200"
+            : "bg-white/60 text-mist ring-clay/40"
         }`}
-      />
-      {active ? `${streak.days}일 연속` : "오늘 첫 기록을 남겨요"}
-    </div>
+        title={
+          active && !streak.wroteToday
+            ? "오늘 기록하면 연속 기록이 이어져요"
+            : "기록 달력 보기"
+        }
+      >
+        <Flame
+          className={`h-4 w-4 ${
+            active
+              ? streak.wroteToday
+                ? "fill-orange-500 text-orange-500"
+                : "text-orange-400"
+              : "text-mist/60"
+          }`}
+        />
+        {active ? `${streak.days}일 연속` : "오늘 첫 기록을 남겨요"}
+      </button>
+      {open && (
+        <StreakCalendar days={days} currentStreak={streak.days} onClose={close} />
+      )}
+    </>
   );
 }

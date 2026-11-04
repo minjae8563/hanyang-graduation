@@ -25,3 +25,24 @@ export function computeStreak(timestamps: string[], now = new Date()): Streak {
   }
   return { days: count, wroteToday };
 }
+
+/** 'YYYY-MM-DD' 날짜 집합에서 가장 길게 이어진 연속 기록일 */
+export function longestStreak(days: Set<string>): number {
+  let best = 0;
+  for (const d of Array.from(days)) {
+    if (days.has(prevDay(d))) continue; // 연속 구간의 시작점에서만 센다
+    let len = 0;
+    let cur = d;
+    while (days.has(cur)) {
+      len++;
+      const [y, m, dd] = cur.split("-").map(Number);
+      cur = localDateString(new Date(y, m - 1, dd + 1));
+    }
+    best = Math.max(best, len);
+  }
+  return best;
+}
+
+export function toDaySet(timestamps: string[]): Set<string> {
+  return new Set(timestamps.map((t) => localDateString(new Date(t))));
+}

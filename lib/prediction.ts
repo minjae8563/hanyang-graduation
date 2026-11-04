@@ -45,7 +45,13 @@ export function estimatePhq9(rows: AnalyzedRow[]) {
 
 /** 최근 14일 일기로 추정치를 계산해 predictions에 한 행 추가. 저장했으면 true. */
 export async function updatePrediction(supabase: SupabaseClient): Promise<boolean> {
-  const since = new Date(Date.now() - PREDICTION_WINDOW_DAYS * 86_400_000).toISOString();
+  // 그래프(dailyScoreSeries)와 같은 기준: 오늘 포함 14일(로컬 자정 기준)
+  const now = new Date();
+  const since = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - (PREDICTION_WINDOW_DAYS - 1)
+  ).toISOString();
   const { data } = await supabase
     .from("entries")
     .select("symptom_scores, feedback_message")
@@ -71,4 +77,48 @@ export async function ensurePrediction(supabase: SupabaseClient): Promise<boolea
     .select("id", { count: "exact", head: true });
   if ((count ?? 0) > 0) return false;
   return updatePrediction(supabase);
+}
+
+// ---------------------------------------------------------------------
+// 점수 추이 그래프용: 과거 일기로 날짜별 점수를 같은 공식으로 재계산
+// ---------------------------------------------------------------------
+type DatedRow = AnalyzedRow & { created_at: string };
+
+export type ScorePoint = {
+  date: string; // YYYY-MM-DD (로컬)
+  score: number | null; // 0~100, 그날 기준 직전 14일에 유효 일기가 없으면 null
+  n: number; // 계산에 쓰인 일기 수
+};
+
+/** 오늘부터 거꾸로 `days`일 동안, 각 날짜 D의 [D-13, D] 구간 평균을 마음 점수로 환산 */
+export function dailyScoreSeries(
+  rows: DatedRow[],
+  days: number,
+  toScore: (phq9: number) => number,
+  now = new Date()
+): ScorePoint[] {
+  const byDate = new Map<string, DatedRow[]>();
+  for (const r of rows) {
+    const d = localDateString(new Date(r.created_at));
+    const list = byDate.get(d) ?? [];
+    list.push(r);
+    byDate.set(d, list);
+  }
+
+  const out: ScorePoint[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const windowRows: DatedRow[] = [];
+    for (let j = 0; j < PREDICTION_WINDOW_DAYS; j++) {
+      const w = new Date(day.getFullYear(), day.getMonth(), day.getDate() - j);
+      windowRows.push(...(byDate.get(localDateString(w)) ?? []));
+    }
+    const est = estimatePhq9(windowRows);
+    out.push({
+      date: localDateString(day),
+      score: est ? toScore(est.predicted_total) : null,
+      n: est ? est.features.n_entries : 0,
+    });
+  }
+  return out;
 }
