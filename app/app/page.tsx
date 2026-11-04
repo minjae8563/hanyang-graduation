@@ -10,6 +10,7 @@ import { FeedbackCard } from "@/components/feedback-card";
 import { StreakBadge } from "@/components/streak-badge";
 import { ScoreCard } from "@/components/score-card";
 import { DEFAULT_ANALYSIS, type EntryAnalysis } from "@/lib/analysis";
+import { ensurePrediction, updatePrediction } from "@/lib/prediction";
 import { Feather, Loader2, Lock, Sparkles } from "lucide-react";
 
 type Entry = {
@@ -96,6 +97,11 @@ export default function RecordPage() {
     }
     loadEntries();
     loadQuestion();
+    // 예측이 아직 없는 기존 사용자는 지난 일기로 한 번 채운다
+    ensureSession()
+      .then(() => ensurePrediction(supabase))
+      .then((saved) => saved && setRefreshKey((k) => k + 1))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -144,19 +150,26 @@ export default function RecordPage() {
       });
       const json = await res.json();
       const analysis: EntryAnalysis = json.analysis ?? DEFAULT_ANALYSIS;
+      const failed = Boolean(json.error) || !json.analysis;
+      // 분석이 실패했으면 가짜 0점 증상을 저장하지 않는다 (마음 점수 왜곡 방지)
       await supabase
         .from("entries")
-        .update({
-          sentiment: analysis.sentiment,
-          symptom_scores: analysis.symptom_scores,
-          activities: analysis.activities,
-          risk_level: analysis.risk_level,
-          feedback_message: analysis.feedback_message,
-        })
+        .update(
+          failed
+            ? { feedback_message: analysis.feedback_message }
+            : {
+                sentiment: analysis.sentiment,
+                symptom_scores: analysis.symptom_scores,
+                activities: analysis.activities,
+                risk_level: analysis.risk_level,
+                feedback_message: analysis.feedback_message,
+              }
+        )
         .eq("id", inserted.id);
       setFeedback(analysis);
       loadEntries();
-      // 분석 이후 예측이 갱신됐을 수 있으니 점수 카드 재조회
+      // 새 일기를 반영해 PHQ-9 추정치 갱신 → 점수 카드 재조회
+      if (!failed) await updatePrediction(supabase).catch(() => false);
       setRefreshKey((k) => k + 1);
     } catch {
       // 분석 실패는 조용히 무시 (기록은 저장됨)
