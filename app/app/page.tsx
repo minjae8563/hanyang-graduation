@@ -7,8 +7,10 @@ import { SUPABASE_READY } from "@/lib/supabase/env";
 import { DailyCheckin } from "@/components/daily-checkin";
 import { Phq9Survey } from "@/components/phq9-survey";
 import { FeedbackCard } from "@/components/feedback-card";
+import { StreakBadge } from "@/components/streak-badge";
+import { ScoreCard } from "@/components/score-card";
 import { DEFAULT_ANALYSIS, type EntryAnalysis } from "@/lib/analysis";
-import { Feather, Loader2, Lock } from "lucide-react";
+import { Feather, Loader2, Lock, Sparkles } from "lucide-react";
 
 type Entry = {
   id: string;
@@ -62,6 +64,9 @@ export default function RecordPage() {
   // 랜덤/시간 기반 값은 마운트 후에 정해 하이드레이션 불일치를 피한다.
   const [prompt, setPrompt] = useState(PROMPTS[0]);
   const [hello, setHello] = useState("");
+  const [aiQuestion, setAiQuestion] = useState(false);
+  // 저장/분석이 끝날 때마다 올려서 스트릭·점수 카드를 다시 불러온다.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   async function ensureSession() {
     if (!supabase) return;
@@ -90,8 +95,24 @@ export default function RecordPage() {
       return;
     }
     loadEntries();
+    loadQuestion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 과거 일기 기반 AI 개인화 질문 — 실패하거나 없으면 기본 문구 유지
+  async function loadQuestion() {
+    try {
+      await ensureSession();
+      const res = await fetch("/api/question", { cache: "no-store" });
+      const json = await res.json();
+      if (typeof json.question === "string" && json.question) {
+        setPrompt(json.question);
+        setAiQuestion(true);
+      }
+    } catch {
+      // 무시
+    }
+  }
 
   async function handleSave() {
     const text = content.trim();
@@ -111,6 +132,7 @@ export default function RecordPage() {
     }
     setContent("");
     loadEntries();
+    setRefreshKey((k) => k + 1);
 
     // 실시간 분석 (LUXIA) — 실패해도 기록은 그대로 유지
     setAnalyzing(true);
@@ -134,6 +156,8 @@ export default function RecordPage() {
         .eq("id", inserted.id);
       setFeedback(analysis);
       loadEntries();
+      // 분석 이후 예측이 갱신됐을 수 있으니 점수 카드 재조회
+      setRefreshKey((k) => k + 1);
     } catch {
       // 분석 실패는 조용히 무시 (기록은 저장됨)
     } finally {
@@ -144,17 +168,23 @@ export default function RecordPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-24 pt-10 sm:pt-16">
       {/* 헤더 */}
-      <header className="mb-8">
-        <p className="min-h-[1.25rem] text-sm text-mist">{hello}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-dusk">
-          <Link href="/">마음로그</Link>
-        </h1>
+      <header className="mb-8 flex items-end justify-between gap-3">
+        <div>
+          <p className="min-h-[1.25rem] text-sm text-mist">{hello}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-dusk">
+            <Link href="/">마음로그</Link>
+          </h1>
+        </div>
+        {SUPABASE_READY && <StreakBadge refreshKey={refreshKey} />}
       </header>
 
       {!SUPABASE_READY ? (
         <SetupNotice />
       ) : (
         <>
+          {/* 마음 점수 (PHQ-9 예측 → 0~100) */}
+          <ScoreCard refreshKey={refreshKey} />
+
           {/* 마음 점검 (PHQ-9) — 기준선 + 14일마다 */}
           <Phq9Survey />
 
@@ -163,9 +193,13 @@ export default function RecordPage() {
 
           {/* 입력 카드 */}
           <section className="rounded-3xl bg-white/70 p-5 shadow-soft ring-1 ring-clay/40 backdrop-blur">
-            <label className="mb-3 flex items-center gap-2 text-sm text-mist">
-              <Feather className="h-4 w-4 text-sage-500" />
-              {prompt}
+            <label className="mb-3 flex items-start gap-2 text-sm text-mist">
+              {aiQuestion ? (
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-sage-500" />
+              ) : (
+                <Feather className="mt-0.5 h-4 w-4 shrink-0 text-sage-500" />
+              )}
+              <span>{prompt}</span>
             </label>
             <textarea
               value={content}
